@@ -1,0 +1,10 @@
+# MathGen — backend (Django REST)
+
+API de la plateforme MathGen, destinée aux élèves du lycée (2nde, 1ère, Tle).
+Elle génère des exercices de maths avec des valeurs aléatoires, vérifie les
+réponses automatiquement (SymPy) et enregistre la progression de chaque élève.
+
+Frontend associé : https://github.com/bilalidjanfarou-svg/mathgen-front
+
+nom d'utilisateur = bilali
+mots de passe = bilali1234
