@@ -24,3 +24,6 @@ class ExerciseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exercise
         fields = ["id", "statement_latex", "answer_type", "hint"]
+
+class AnswerRequestSerializer(serializers.Serializer):
+    answer = serializers.CharField(max_length=100)

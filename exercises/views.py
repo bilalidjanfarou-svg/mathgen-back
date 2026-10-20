@@ -11,6 +11,15 @@ from rest_framework.views import APIView
 from .generators import generate
 from .models import Exercise
 from .serializers import ExerciseSerializer, GenerateRequestSerializer
+from django.shortcuts import get_object_or_404
+
+from .checking import check_answer
+from .models import Attempt, Exercise
+from .serializers import AnswerRequestSerializer
+
+
+
+
 
 
 
@@ -41,3 +50,35 @@ class GenerateExerciseView(APIView):
             chapter=chapter, difficulty=difficulty, user=user, **data
         )
         return Response(ExerciseSerializer(exercise).data, status=status.HTTP_201_CREATED)
+
+class AnswerExerciseView(APIView):
+    def post(self, request, pk):
+        exercise = get_object_or_404(Exercise, pk=pk)
+        payload = AnswerRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+
+        if exercise.attempts.exists():
+            return Response(
+                {"detail": "Cet exercice a déjà reçu une réponse."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        answer = payload.validated_data["answer"]
+        correct = check_answer(exercise.answer_type, exercise.expected, answer)
+        user = request.user if request.user.is_authenticated else None
+        Attempt.objects.create(
+            exercise=exercise, user=user, answer=answer, is_correct=correct
+        )
+        return Response(
+            {"correct": correct, "explanation_latex": exercise.explanation_latex}
+        )
+
+
+
+
+
+
+
+
+
+
