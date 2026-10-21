@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404
 from .checking import check_answer
 from .models import Attempt, Exercise
 from .serializers import AnswerRequestSerializer
+from django.db.models import Count, F, Q
 
 
 
@@ -72,6 +73,46 @@ class AnswerExerciseView(APIView):
         return Response(
             {"correct": correct, "explanation_latex": exercise.explanation_latex}
         )
+
+class ProgressView(APIView):
+    def get(self, request):
+        user = request.user if request.user.is_authenticated else None
+        rows = (
+            Attempt.objects.filter(user=user)
+            .values(chapter_id=F("exercise__chapter_id"))
+            .annotate(
+                attempts=Count("id"),
+                correct=Count("id", filter=Q(is_correct=True)),
+            )
+            .order_by("chapter_id")
+        )
+        data = [
+            {
+                "chapter_id": r["chapter_id"],
+                "attempts": r["attempts"],
+                "correct": r["correct"],
+                "success_rate": r["correct"] / r["attempts"],
+            }
+            for r in rows
+        ]
+        return Response(data)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
