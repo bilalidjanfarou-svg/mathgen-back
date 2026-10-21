@@ -1,9 +1,8 @@
 from django.urls import path
-
-from .views import AnswerExerciseView, ChapterListView
+from .views import AnswerExerciseView, ChapterListView, GenerateExerciseView
 from django.urls import path
 
-from .views import ChapterListView, GenerateExerciseView
+
 
 
 urlpatterns = [
