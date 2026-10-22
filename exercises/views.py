@@ -1,34 +1,50 @@
-from django.shortcuts import render
-
-from rest_framework.generics import ListAPIView
-
-from .models import Chapter
-from .serializers import ChapterSerializer
+from django.db.models import Count, F, Q
+from django.shortcuts import get_object_or_404
 from rest_framework import status
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from .generators import generate
-from .models import Exercise
-from .serializers import ExerciseSerializer, GenerateRequestSerializer
-from django.shortcuts import get_object_or_404
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .checking import check_answer
-from .models import Attempt, Exercise
-from .serializers import AnswerRequestSerializer
-from django.db.models import Count, F, Q
-
-
-
-
-
-
+from .generators import generate
+from .models import Attempt, Chapter, Exercise
+from .serializers import (
+    AnswerRequestSerializer,
+    ChapterSerializer,
+    ExerciseSerializer,
+    GenerateRequestSerializer,
+    RegisterSerializer,
+)
 
 
 class ChapterListView(ListAPIView):
     queryset = Chapter.objects.all()
     serializer_class = ChapterSerializer
     pagination_class = None
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+
+class RegisterView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {"access": str(refresh.access_token), "refresh": str(refresh)},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class MeView(APIView):
+    def get(self, request):
+        return Response({"id": request.user.id, "username": request.user.username})
 
 
 class GenerateExerciseView(APIView):
@@ -46,15 +62,15 @@ class GenerateExerciseView(APIView):
                 status=status.HTTP_501_NOT_IMPLEMENTED,
             )
 
-        user = request.user if request.user.is_authenticated else None
         exercise = Exercise.objects.create(
-            chapter=chapter, difficulty=difficulty, user=user, **data
+            chapter=chapter, difficulty=difficulty, user=request.user, **data
         )
         return Response(ExerciseSerializer(exercise).data, status=status.HTTP_201_CREATED)
 
+
 class AnswerExerciseView(APIView):
     def post(self, request, pk):
-        exercise = get_object_or_404(Exercise, pk=pk)
+        exercise = get_object_or_404(Exercise, pk=pk, user=request.user)
         payload = AnswerRequestSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
@@ -66,19 +82,16 @@ class AnswerExerciseView(APIView):
 
         answer = payload.validated_data["answer"]
         correct = check_answer(exercise.answer_type, exercise.expected, answer)
-        user = request.user if request.user.is_authenticated else None
         Attempt.objects.create(
-            exercise=exercise, user=user, answer=answer, is_correct=correct
+            exercise=exercise, user=request.user, answer=answer, is_correct=correct
         )
-        return Response(
-            {"correct": correct, "explanation_latex": exercise.explanation_latex}
-        )
+        return Response({"correct": correct, "explanation_latex": exercise.explanation_latex})
+
 
 class ProgressView(APIView):
     def get(self, request):
-        user = request.user if request.user.is_authenticated else None
         rows = (
-            Attempt.objects.filter(user=user)
+            Attempt.objects.filter(user=request.user)
             .values(chapter_id=F("exercise__chapter_id"))
             .annotate(
                 attempts=Count("id"),
@@ -96,30 +109,3 @@ class ProgressView(APIView):
             for r in rows
         ]
         return Response(data)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
