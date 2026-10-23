@@ -5,6 +5,7 @@ from .views import (
     AnswerExerciseView,
     ChapterListView,
     GenerateExerciseView,
+    HistoryView,
     MeView,
     ProgressView,
     RegisterView,
@@ -19,4 +20,5 @@ urlpatterns = [
     path("exercises/generate/", GenerateExerciseView.as_view(), name="exercise-generate"),
     path("exercises/<int:pk>/answer/", AnswerExerciseView.as_view(), name="exercise-answer"),
     path("progress/", ProgressView.as_view(), name="progress"),
+    path("history/", HistoryView.as_view(), name="history"),
 ]

@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .checking import check_answer
+from .checking import UnreadableAnswer, check_answer
 from .generators import generate
 from .models import Attempt, Chapter, Exercise
 from .serializers import (
@@ -81,7 +81,11 @@ class AnswerExerciseView(APIView):
             )
 
         answer = payload.validated_data["answer"]
-        correct = check_answer(exercise.answer_type, exercise.expected, answer)
+        try:
+            correct = check_answer(exercise.answer_type, exercise.expected, answer)
+        except UnreadableAnswer as err:
+            # Réponse mal écrite : on la refuse sans l'enregistrer, l'élève peut réessayer.
+            return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
         Attempt.objects.create(
             exercise=exercise, user=request.user, answer=answer, is_correct=correct
         )
@@ -109,3 +113,32 @@ class ProgressView(APIView):
             for r in rows
         ]
         return Response(data)
+
+
+class HistoryView(APIView):
+    def get(self, request):
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", 30)), 100))
+        except ValueError:
+            limit = 30
+        attempts = (
+            Attempt.objects.filter(user=request.user)
+            .select_related("exercise__chapter")
+            .order_by("-created_at", "-id")[:limit]
+        )
+        return Response(
+            [
+                {
+                    "id": a.id,
+                    "chapter": a.exercise.chapter.name,
+                    "level": a.exercise.chapter.level,
+                    "difficulty": a.exercise.difficulty,
+                    "statement_latex": a.exercise.statement_latex,
+                    "answer": a.answer,
+                    "is_correct": a.is_correct,
+                    "explanation_latex": a.exercise.explanation_latex,
+                    "created_at": a.created_at,
+                }
+                for a in attempts
+            ]
+        )

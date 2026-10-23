@@ -10,6 +10,10 @@ from sympy.parsing.sympy_parser import (
     standard_transformations,
 )
 
+class UnreadableAnswer(ValueError):
+    """La réponse n'a pas pu être lue (mauvais format) : elle n'est pas comptée comme fausse."""
+
+
 x = Symbol("x")
 TRANSFORMS = standard_transformations + (implicit_multiplication_application, convert_xor)
 NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:/[1-9]\d*)?")
@@ -55,20 +59,37 @@ def _parse_expression(text):
 
 
 def check_answer(answer_type, expected, raw):
-    """True si la réponse de l'élève est correcte."""
+    """True si la réponse est correcte, False sinon. UnreadableAnswer si elle est illisible."""
     if answer_type == "number":
         value = _to_fraction(raw)
-        return value is not None and value == Fraction(expected)
+        if value is None:
+            raise UnreadableAnswer("Écris un nombre (5 ou -2,5) ou une fraction (7/2).")
+        return value == Fraction(expected)
     if answer_type == "interval":
-        return _norm_interval(raw) == _norm_interval(expected)
+        got = _norm_interval(raw)
+        if not re.fullmatch(r"[\[\]].+;.+[\[\]]", got):
+            raise UnreadableAnswer(
+                "Écris un intervalle avec ses crochets et un point-virgule, par exemple ]-∞ ; 3[."
+            )
+        return got == _norm_interval(expected)
     if answer_type == "set":
-        return sorted(set(_numbers(raw))) == sorted({Fraction(e) for e in expected})
+        got = _numbers(raw)
+        if not got:
+            raise UnreadableAnswer(
+                "Écris les solutions séparées par des points-virgules, par exemple {-1 ; 4}."
+            )
+        return sorted(set(got)) == sorted({Fraction(e) for e in expected})
     if answer_type == "vector":
-        return _numbers(raw) == [Fraction(e) for e in expected]
+        got = _numbers(raw)
+        if len(got) != len(expected):
+            raise UnreadableAnswer("Écris les deux coordonnées, par exemple (2 ; -3).")
+        return got == [Fraction(e) for e in expected]
     if answer_type == "expression":
         student = _parse_expression(raw)
         if student is None:
-            return False
+            raise UnreadableAnswer(
+                "Écris une expression en x, par exemple 3x^2 - 6x (utilise ^ pour les puissances)."
+            )
         target = parse_expr(expected, local_dict={"x": x})
         return simplify(nsimplify(student, rational=True) - target) == 0
     raise ValueError(f"Type de réponse inconnu : {answer_type}")
