@@ -1,5 +1,8 @@
+from datetime import timedelta
 from django.db.models import Count, F, Q
+from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny
@@ -142,3 +145,79 @@ class HistoryView(APIView):
                 for a in attempts
             ]
         )
+
+class StatsView(APIView):
+    """Données du tableau de board de l'élève connecté."""
+    def get(self, request):
+        attempts = Attempt.objects.filter(user=request.user)
+
+        # Activité par jour (dans le fuseau horaire du projet).
+        per_day = {
+            row["day"]: row
+            for row in attempts.annotate(day=TruncDate("created_at"))
+            .values("day")
+            .annotate(n=Count("id"), ok=Count("id", filter=Q(is_correct=True)))
+        }
+        today = timezone.localdate()
+        last_7_days = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            row = per_day.get(day)
+            last_7_days.append(
+                {
+                    "date": day.isoformat(),
+                    "attempts": row["n"] if row else 0,
+                    "correct": row["ok"] if row else 0,
+                }
+            )
+
+        # Série : jours consécutifs avec au moins un exercice.
+        # Si l'élève n'a encore rien fait aujourd'hui, la série d'hier reste valable.
+        day = today if today in per_day else today - timedelta(days=1)
+        streak = 0
+        while day in per_day:
+            streak += 1
+            day -= timedelta(days=1)
+
+        # Résultats par chapitre (tous les chapitres, même ceux jamais essayés).
+        by_chapter = {
+            row["chapter_id"]: row
+            for row in attempts.values(chapter_id=F("exercise__chapter_id")).annotate(
+                n=Count("id"), ok=Count("id", filter=Q(is_correct=True))
+            )
+        }
+        chapters = []
+        for chapter in Chapter.objects.all():
+            row = by_chapter.get(chapter.id)
+            n, ok = (row["n"], row["ok"]) if row else (0, 0)
+            chapters.append(
+                {
+                    "chapter_id": chapter.id,
+                    "name": chapter.name,
+                    "level": chapter.level,
+                    "attempts": n,
+                    "correct": ok,
+                    "success_rate": ok / n if n else None,
+                }
+            )
+
+        total = sum(c["attempts"] for c in chapters)
+        correct = sum(c["correct"] for c in chapters)
+        return Response(
+            {
+                "totals": {
+                    "attempts": total,
+                    "correct": correct,
+                    "success_rate": correct / total if total else None,
+                },
+                "streak_days": streak,
+                "today": {
+                    "attempts": last_7_days[-1]["attempts"],
+                    "correct": last_7_days[-1]["correct"],
+                },
+                "last_7_days": last_7_days,
+                "chapters": chapters,
+            }
+        )
+        
+        
