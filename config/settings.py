@@ -107,6 +107,7 @@ DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",  # sans DATABASE_URL : SQLite en local
         conn_max_age=600,
+        conn_health_checks=True,
     )
 }
 
